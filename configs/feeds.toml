@@ -1,0 +1,7 @@
+[feeds]
+arxiv_cs_ai = "http://export.arxiv.org/rss/cs.AI"
+arxiv_cs_lg = "http://export.arxiv.org/rss/cs.LG"
+hacker_news = "https://news.ycombinator.com/rss"
+nvidia_blog = "https://blogs.nvidia.com/feed/"
+nvidia_developer = "https://developer.nvidia.com/blog/feed/"
+gpu_cuda = "https://www.phoronix.com/rss.php"

@@ -1,0 +1,19 @@
+[weights]
+urgency = 0.20
+importance = 0.20
+deadline_proximity = 0.15
+career_impact = 0.15
+academic_impact = 0.10
+goal_alignment = 0.10
+effort_inverse = 0.10
+
+[thresholds]
+high = 80
+medium = 50
+low = 20
+
+[opportunity_weights]
+nvidia_alignment = 0.40
+networking_value = 0.20
+skill_building = 0.30
+prestige = 0.10

@@ -1,0 +1,122 @@
+/* Layout styling */
+.app-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    height: 100vh;
+    width: 100vw;
+}
+
+.sidebar {
+    background-color: var(--color-bg-card);
+    border-right: 1px solid #1f2937;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+.sidebar-header {
+    padding: 24px 20px;
+    border-bottom: 1px solid #1f2937;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--color-accent-cyan);
+    margin-bottom: 8px;
+}
+
+.clock {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.ws-status {
+    margin-top: 4px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 16px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid #1f2937;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.main-content {
+    overflow-y: auto;
+    position: relative;
+    padding-bottom: 40px;
+}
+
+#app-root {
+    padding: 32px 40px;
+    max-width: 1400px;
+    margin: 0 auto;
+    transition: opacity var(--transition-fast);
+}
+
+.page-header {
+    position: sticky;
+    top: 0;
+    background-color: rgba(10, 14, 23, 0.85);
+    backdrop-filter: blur(12px);
+    z-index: 10;
+    padding: 16px 0;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1f2937;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 20px;
+}
+
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 32px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+
+@media (max-width: 768px) {
+    .app-layout {
+        grid-template-columns: 64px 1fr;
+    }
+    .sidebar-header .logo, .sidebar-header .clock, .sidebar-footer .version {
+        display: none;
+    }
+    .sidebar-nav .nav-link span {
+        font-size: 20px;
+        margin: 0 auto;
+    }
+    .sidebar-nav .nav-link {
+        justify-content: center;
+        padding: 12px;
+        font-size: 0;
+    }
+    #app-root {
+        padding: 20px;
+    }
+}

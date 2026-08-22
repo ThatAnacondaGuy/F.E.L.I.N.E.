@@ -1,0 +1,16 @@
+[goals]
+nvidia_career = { priority = "HIGHEST", target_date = "2025-08-01", description = "Secure a role at NVIDIA" }
+
+[courses]
+artificial_intelligence = { code = "PCC301COM", priority = "HIGHEST", status = "active" }
+computer_networks = { code = "PCC302COM", priority = "Standard", status = "active" }
+theory_of_computation = { code = "PCC303COM", priority = "Standard", status = "active" }
+robotics_and_automation = { code = "MDM331COM", priority = "High", status = "active" }
+cloud_computing = { code = "PEC321BCOM", priority = "High", status = "active" }
+ipr = { code = "Open Elective", priority = "Standard", status = "active" }
+technical_seminar = { code = "ELC342COM", priority = "High", status = "active" }
+
+[skills]
+cuda_programming = { level = "intermediate", target_level = "expert" }
+python = { level = "advanced", target_level = "expert" }
+machine_learning = { level = "intermediate", target_level = "advanced" }

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meow OS — Command Center</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐾</text></svg>">
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/themes.css">
+    <link rel="stylesheet" href="/static/css/layout.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">🐾 Meow OS</div>
+                <div class="clock" id="live-clock">--:--</div>
+                <div class="ws-status" id="ws-indicator"><span class="status-dot"></span></div>
+            </div>
+            <nav class="sidebar-nav">
+                <a href="#/dashboard" class="nav-link" data-route="dashboard"><span>📊</span> Dashboard</a>
+                <a href="#/calendar" class="nav-link" data-route="calendar"><span>📅</span> Calendar</a>
+                <a href="#/tasks" class="nav-link" data-route="tasks"><span>✅</span> Tasks</a>
+                <a href="#/projects" class="nav-link" data-route="projects"><span>🚀</span> Projects</a>
+                <a href="#/opportunities" class="nav-link" data-route="opportunities"><span>💡</span> Opportunities</a>
+                <a href="#/goals" class="nav-link" data-route="goals"><span>🎯</span> Goals</a>
+                <a href="#/intelligence" class="nav-link" data-route="intelligence"><span>📡</span> Intelligence</a>
+                <a href="#/chat" class="nav-link" data-route="chat"><span>💬</span> Chat</a>
+                <a href="#/memory" class="nav-link" data-route="memory"><span>🧠</span> Memory</a>
+                <a href="#/alerts" class="nav-link" data-route="alerts"><span>⚠️</span> Alerts</a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="version">v1.0.0</div>
+                <button class="btn btn-icon btn-ghost" id="theme-toggle">🌗</button>
+            </div>
+        </aside>
+        
+        <main class="main-content">
+            <div id="app-root"></div>
+        </main>
+        
+        <div class="toast-container" id="toast-container"></div>
+    </div>
+
+    <!-- Modals & Overlays -->
+    <div id="command-palette" class="hidden">
+        <div class="palette-overlay"></div>
+        <div class="palette-modal">
+            <input type="text" id="palette-input" class="input" placeholder="Search or type a command... (Cmd+K)" autocomplete="off">
+            <div class="palette-results"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/utils/time.js"></script>
+    <script src="/static/js/utils/notifications.js"></script>
+    <script src="/static/js/utils/voice.js"></script>
+    
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/websocket.js"></script>
+    
+    <script src="/static/js/components/dashboard.js"></script>
+    <script src="/static/js/components/tasks.js"></script>
+    <script src="/static/js/components/chat.js"></script>
+    <script src="/static/js/components/projects.js"></script>
+    <script src="/static/js/components/opportunities.js"></script>
+    <script src="/static/js/components/goals.js"></script>
+    <script src="/static/js/components/memory.js"></script>
+    <script src="/static/js/components/calendar.js"></script>
+    <script src="/static/js/components/briefing.js"></script>
+    <script src="/static/js/components/alerts.js"></script>
+    
+    <script src="/static/js/router.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
