@@ -158,3 +158,11 @@ def test_doctor_google_checks(settings: Settings) -> None:
 
     ok = by_name(google_checks(settings, MemoryTokenStore({"me@gmail.test": "{}"})))
     assert ok["Google: me@gmail.test"].status is Status.OK
+
+
+def test_brief_prints_todays_briefing() -> None:
+    runner = CliRunner()
+    runner.invoke(app, ["task", "add", "Revise TOC", "--due", "tomorrow 23:00", "--minutes", "45"])
+    r = runner.invoke(app, ["brief", "morning"], env={"COLUMNS": "200"})
+    assert r.exit_code == 0, r.output
+    assert "Morning briefing" in r.output and "Revise TOC" in r.output

@@ -20,7 +20,15 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from meow.config import Profile
-from meow.db.models import CalendarEvent, ConnectedAccount, Proposal, SourceItem, SyncState
+from meow.db.models import (
+    CalendarEvent,
+    ConnectedAccount,
+    FocusSession,
+    Proposal,
+    SourceItem,
+    SyncState,
+    Task,
+)
 from meow.integrations.google import normalize
 from meow.integrations.google.apis import (
     CalendarAPI,
@@ -35,7 +43,7 @@ from meow.integrations.google.auth import ReauthRequired, TokenStore, load_crede
 from meow.services import accounts, audit, proposals
 from meow.services.capture import Change, upsert_source
 from meow.services.tasks import TaskDraft
-from meow.types import Category, Importance, ProposalKind, ProposalStatus, SourceKind
+from meow.types import Category, Importance, ProposalKind, ProposalStatus, SourceKind, TaskStatus
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +77,8 @@ class SourceResult:
     source: SourceKind
     new_items: int = 0
     proposals: int = 0
+    pushed: int = 0  # focus blocks added to the Meow calendar
+    removed: int = 0  # focus blocks taken off it (task done, block gone)
     error: str | None = None
 
 
@@ -113,7 +123,9 @@ class GoogleSync:
 
     def run(self, *, account: str | None = None, source: SourceKind | None = None) -> SyncReport:
         report = SyncReport()
-        for acct in accounts.list_accounts(self.db, enabled_only=True):
+        enabled = accounts.list_accounts(self.db, enabled_only=True)
+        self.focus_account = self._focus_account(enabled)
+        for acct in enabled:
             if account and acct.email != accounts.normalize_email(account):
                 continue
             wanted = [SourceKind(s) for s in acct.sources if source is None or s == source]
@@ -141,7 +153,16 @@ class GoogleSync:
                 if src is SourceKind.GMAIL:
                     self._sync_gmail(self.apis.gmail(creds), acct.email, state, result)
                 elif src is SourceKind.CALENDAR:
-                    self._sync_calendar(self.apis.calendar(creds), acct.email, result)
+                    calendar = self.apis.calendar(creds)
+                    self._sync_calendar(calendar, acct.email, result)
+                    if acct.email == self.focus_account:
+                        self.db.commit()  # keep the busy time even if the push fails
+                        try:
+                            self._push_focus_blocks(calendar, acct, result)
+                        except Exception as exc:
+                            self.db.rollback()
+                            result.error = f"focus calendar: {_short(exc)}"
+                            log.warning("focus push for %s failed: %s", acct.email, exc)
                 elif src is SourceKind.CLASSROOM:
                     self._sync_classroom(self.apis.classroom(creds), acct.email, result)
             except Exception as exc:  # isolate: one source failing never blocks the rest
@@ -167,10 +188,21 @@ class GoogleSync:
                 source=src.value,
                 new=result.new_items,
                 proposals=result.proposals,
+                pushed=result.pushed,
+                removed=result.removed,
                 error=result.error,
             )
             self.db.commit()
             report.results.append(result)
+
+    def _focus_account(self, enabled: Sequence[ConnectedAccount]) -> str | None:
+        """The one account whose calendar gets the focus blocks."""
+        cfg = self.profile.sync
+        if not cfg.push_focus_blocks:
+            return None
+        if cfg.focus_calendar_account:
+            return accounts.normalize_email(cfg.focus_calendar_account)
+        return next((a.email for a in enabled if SourceKind.CALENDAR.value in a.sources), None)
 
     def _state(self, source: SourceKind, account: str) -> SyncState:
         state = self.db.scalar(
@@ -277,6 +309,91 @@ class GoogleSync:
         row.title, row.start_at, row.end_at = event.title, event.start_at, event.end_at
         row.all_day, row.busy = event.all_day, event.busy
         return int(created)
+
+    # ── Focus blocks → the "Meow focus" calendar ─────────────────────────
+
+    def _push_focus_blocks(
+        self, api: CalendarAPI, acct: ConnectedAccount, result: SourceResult
+    ) -> None:
+        """Make the Meow calendar match your approved focus blocks: add missing ones, remove
+        ones whose block or task is gone. Events Meow didn't create are never touched."""
+        cfg = self.profile.sync
+        calendar_id = acct.focus_calendar_id
+        if not calendar_id or not api.calendar_exists(calendar_id):
+            calendar_id = api.create_calendar(
+                cfg.focus_calendar_name,
+                "Focus blocks you approved in Meow OS. Meow only ever edits this calendar.",
+                self.profile.user.timezone,
+            )
+            acct.focus_calendar_id = calendar_id
+            audit.record(
+                self.db,
+                actor="sync",
+                action="calendar.created",
+                entity_type="account",
+                account=acct.email,
+                name=cfg.focus_calendar_name,
+            )
+            self.db.flush()
+        start = self.now - timedelta(days=1)
+        end = self.now + timedelta(days=self.profile.planner.horizon_days + 2)
+
+        remote: dict[str, str] = {}  # focus session id -> event id
+        token: str | None = None
+        while True:
+            items, token = api.list_events(calendar_id, start, end, token)
+            for event in items:
+                private = (event.get("extendedProperties") or {}).get("private") or {}
+                if session_id := private.get("meow_session_id"):
+                    remote[session_id] = event["id"]
+            if not token:
+                break
+
+        sessions = self.db.scalars(
+            select(FocusSession)
+            .join(Task)
+            .where(
+                FocusSession.end_at > start,
+                FocusSession.start_at < end,
+                Task.status == TaskStatus.TODO,
+            )
+        )
+        wanted: set[str] = set()
+        for session in sessions:
+            wanted.add(session.id)
+            if session.id in remote:
+                session.calendar_event_id = remote[session.id]
+                continue
+            session.calendar_event_id = api.insert_event(calendar_id, self._event_body(session))
+            result.pushed += 1
+        for session_id, event_id in remote.items():
+            if session_id not in wanted:
+                api.delete_event(calendar_id, event_id)
+                result.removed += 1
+
+    def _event_body(self, session: FocusSession) -> dict[str, Any]:
+        tz_name = self.profile.user.timezone
+        minutes = self.profile.sync.focus_reminder_minutes
+        return {
+            "summary": f"Focus: {session.task.title}",
+            "description": "Planned by Meow OS from a focus block you approved.",
+            "start": {
+                "dateTime": session.start_at.astimezone(self.tz).isoformat(),
+                "timeZone": tz_name,
+            },
+            "end": {
+                "dateTime": session.end_at.astimezone(self.tz).isoformat(),
+                "timeZone": tz_name,
+            },
+            "transparency": "opaque",
+            "reminders": {
+                "useDefault": False,
+                "overrides": [{"method": "popup", "minutes": minutes}] if minutes else [],
+            },
+            "extendedProperties": {
+                "private": {"meow_session_id": session.id, "meow_task_id": session.task_id}
+            },
+        }
 
     # ── Classroom ────────────────────────────────────────────────────────
 

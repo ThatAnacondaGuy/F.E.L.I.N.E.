@@ -103,13 +103,40 @@ class FakeGmail:
 
 
 class FakeCalendar:
+    """Your primary calendar (read) plus any calendars Meow creates (read/write), in memory."""
+
     def __init__(self, events: list[dict[str, Any]]) -> None:
         self.events = events
+        self.owned: dict[str, dict[str, dict[str, Any]]] = {}  # calendar id -> event id -> body
+        self.names: dict[str, str] = {}
+        self._next = 0
+
+    def _id(self, prefix: str) -> str:
+        self._next += 1
+        return f"{prefix}{self._next}"
 
     def list_events(
         self, calendar_id: str, time_min: datetime, time_max: datetime, page_token: str | None
     ) -> tuple[list[dict[str, Any]], str | None]:
+        if calendar_id in self.owned:
+            return [{"id": eid, **body} for eid, body in self.owned[calendar_id].items()], None
         return list(self.events), None
+
+    def calendar_exists(self, calendar_id: str) -> bool:
+        return calendar_id in self.owned
+
+    def create_calendar(self, summary: str, description: str, time_zone: str) -> str:
+        calendar_id = self._id("meowcal")
+        self.owned[calendar_id], self.names[calendar_id] = {}, summary
+        return calendar_id
+
+    def insert_event(self, calendar_id: str, body: dict[str, Any]) -> str:
+        event_id = self._id("ev")
+        self.owned[calendar_id][event_id] = body
+        return event_id
+
+    def delete_event(self, calendar_id: str, event_id: str) -> None:
+        self.owned[calendar_id].pop(event_id, None)
 
 
 class FakeClassroom:
@@ -173,3 +200,12 @@ def fake_credentials(store: Any, email: str, sources: Any) -> object:
 
 def utc(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
     return datetime(year, month, day, hour, minute, tzinfo=UTC)
+
+
+class RecordingNotifier:
+    def __init__(self) -> None:
+        self.sent: list[tuple[str, str]] = []
+
+    def notify(self, title: str, message: str) -> bool:
+        self.sent.append((title, message))
+        return True

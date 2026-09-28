@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from meow.db.models import AuditEntry, Proposal, Task
+from meow.db.models import AuditEntry, Briefing, Proposal, Task
 from meow.domain.planner import Plan
 from meow.domain.prioritizer import Score
 from meow.services.autonomy import AutonomyStatus
@@ -269,6 +269,8 @@ class SyncResultOut(BaseModel):
     source: SourceKind
     new_items: int
     proposals: int
+    pushed: int
+    removed: int
     error: str | None
 
 
@@ -288,6 +290,8 @@ class SyncRunOut(BaseModel):
                     source=r.source,
                     new_items=r.new_items,
                     proposals=r.proposals,
+                    pushed=r.pushed,
+                    removed=r.removed,
                     error=r.error,
                 )
                 for r in run.google.results
@@ -296,4 +300,30 @@ class SyncRunOut(BaseModel):
             extracted=run.extraction.processed,
             extraction_proposals=run.extraction.proposals,
             extraction_error=run.extraction.error,
+        )
+
+
+class BriefingSectionOut(BaseModel):
+    heading: str
+    items: list[str]
+    tone: str = ""
+
+
+class BriefingOut(BaseModel):
+    kind: str
+    day: date
+    created_at: datetime
+    headline: str
+    sections: list[BriefingSectionOut]
+    notified: bool
+
+    @classmethod
+    def of(cls, b: Briefing) -> BriefingOut:
+        return cls(
+            kind=b.kind,
+            day=b.day,
+            created_at=b.created_at,
+            headline=b.headline,
+            sections=[BriefingSectionOut(**x) for x in b.sections],
+            notified=b.notified,
         )

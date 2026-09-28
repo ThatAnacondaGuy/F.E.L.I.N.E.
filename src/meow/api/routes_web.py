@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 
-from meow.api.deps import COOKIE_NAME, DB, LLM, Now, ProfileDep, require_auth
+from meow.api.deps import COOKIE_NAME, DB, LLM, Now, ProfileDep, nudge_worker, require_auth
 from meow.config import Profile
 from meow.db.models import FocusSession
 from meow.domain.timeutil import format_duration
@@ -23,13 +23,22 @@ from meow.services import (
     accounts,
     audit,
     autonomy,
+    briefings,
     capture,
     planning,
     proposals,
     syncing,
     tasks,
 )
-from meow.types import BlockKind, Category, Importance, ProposalKind, ProposalStatus, TaskStatus
+from meow.types import (
+    BlockKind,
+    BriefingKind,
+    Category,
+    Importance,
+    ProposalKind,
+    ProposalStatus,
+    TaskStatus,
+)
 
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 public = APIRouter(include_in_schema=False)
@@ -121,6 +130,7 @@ def _pending(db: DB) -> int:
 
 @router.get("/", response_class=HTMLResponse)
 def today(request: Request, db: DB, profile: ProfileDep, now: Now) -> HTMLResponse:
+    proposals.expire_stale(db, now)
     schedule = tasks.schedule_for(profile)
     tz = profile.user.tz
     block = schedule.block_at(now)
@@ -158,8 +168,18 @@ def today(request: Request, db: DB, profile: ProfileDep, now: Now) -> HTMLRespon
         ranked=tasks.ranked_tasks(db, profile, now)[:6],
         pending_count=_pending(db),
         quiet=schedule.is_quiet(now),
+        briefing=briefings.latest(db, profile, now),
+        brief_kind="morning" if now.astimezone(tz).hour < 14 else "evening",
         **_sync_summary(db),
     )
+
+
+@router.post("/briefings/{kind}")
+def make_briefing(
+    request: Request, kind: BriefingKind, db: DB, profile: ProfileDep, now: Now
+) -> Response:
+    briefings.generate(db, profile, kind, now, request.app.state.notifier, force=True)
+    return _back("/")
 
 
 def _sync_summary(db: DB) -> dict[str, Any]:
@@ -197,7 +217,8 @@ def sync_now(request: Request, db: DB, now: Now, llm: LLM) -> Response:
 
 
 @router.get("/inbox", response_class=HTMLResponse)
-def inbox(request: Request, db: DB, profile: ProfileDep) -> HTMLResponse:
+def inbox(request: Request, db: DB, profile: ProfileDep, now: Now) -> HTMLResponse:
+    proposals.expire_stale(db, now)
     pending = proposals.inbox_order(proposals.list_proposals(db, ProposalStatus.PENDING))
     return _render(
         request,
@@ -211,16 +232,18 @@ def inbox(request: Request, db: DB, profile: ProfileDep) -> HTMLResponse:
 
 
 @router.post("/inbox/approve-focus-blocks")
-def approve_focus_blocks(db: DB, profile: ProfileDep) -> Response:
+def approve_focus_blocks(request: Request, db: DB, profile: ProfileDep, now: Now) -> Response:
     try:
-        proposals.approve_all(db, profile, ProposalKind.SCHEDULE_FOCUS_BLOCK)
+        proposals.approve_all(db, profile, ProposalKind.SCHEDULE_FOCUS_BLOCK, now=now)
     except (proposals.ProposalError, tasks.TaskNotFound) as exc:
         return _back("/inbox", error=str(exc)[:200])
+    nudge_worker(request)  # put them on the Meow calendar now, not in 30 minutes
     return _back("/inbox", note="approved")
 
 
 @router.post("/inbox/{proposal_id}/approve")
 def approve(
+    request: Request,
     proposal_id: str,
     db: DB,
     profile: ProfileDep,
@@ -240,9 +263,11 @@ def approve(
     if importance is not None:
         edits["importance"] = importance.value
     try:
-        proposals.approve(db, profile, proposal_id, edits=edits or None)
+        approved = proposals.approve(db, profile, proposal_id, edits=edits or None)
     except (proposals.ProposalError, proposals.ProposalNotFound, tasks.TaskNotFound) as exc:
         return _back("/inbox", error=str(exc)[:200])
+    if approved.kind is ProposalKind.SCHEDULE_FOCUS_BLOCK:
+        nudge_worker(request)
     return _back("/inbox", note="approved")
 
 
@@ -325,11 +350,12 @@ def add_task(
 
 
 @router.post("/tasks/{task_id}/done")
-def task_done(task_id: str, db: DB) -> Response:
+def task_done(request: Request, task_id: str, db: DB, now: Now) -> Response:
     try:
-        tasks.set_status(db, task_id, TaskStatus.DONE, actor="user")
+        tasks.set_status(db, task_id, TaskStatus.DONE, actor="user", now=now)
     except tasks.TaskNotFound:
         raise HTTPException(404, "Task not found") from None
+    nudge_worker(request)  # take its focus blocks off the calendar soon
     return _back("/tasks", note="task_done")
 
 

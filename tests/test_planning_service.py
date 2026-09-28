@@ -84,3 +84,16 @@ def test_approve_all_focus_blocks(db: Session, profile: Profile) -> None:
     assert len(approved) == 2
     assert all(p.status is ProposalStatus.APPROVED for p in approved)
     assert db.query(FocusSession).count() == 2
+
+
+def test_focus_blocks_whose_time_passed_expire(db: Session, profile: Profile) -> None:
+    from meow.services import autonomy
+
+    add(db, "Essay", 60)
+    _, (block,) = planning.propose_focus_blocks(db, profile, NOW)  # 16:30-17:30
+    assert proposals.expire_stale(db, ist(2026, 9, 28, 16, 0)) == 0
+    assert proposals.expire_stale(db, ist(2026, 9, 28, 16, 31)) == 1
+    db.refresh(block)
+    assert block.status is ProposalStatus.EXPIRED
+    status = autonomy.status(db, profile, ProposalKind.SCHEDULE_FOCUS_BLOCK)
+    assert status.decisions == 0 and status.rejected == 0  # not held against Meow

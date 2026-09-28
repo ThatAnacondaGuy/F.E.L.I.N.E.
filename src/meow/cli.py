@@ -32,9 +32,10 @@ from meow.integrations.google.auth import (
 )
 from meow.llm.extraction import ExtractionError, Extractor
 from meow.llm.ollama import OllamaClient
+from meow.notify import MacNotifier, Notifier, NullNotifier
 from meow.security import load_or_create_token, login_code
-from meow.services import accounts, capture, proposals, syncing, tasks
-from meow.types import Category, Importance, ProposalStatus, SourceKind, TaskStatus
+from meow.services import accounts, briefings, capture, proposals, syncing, tasks
+from meow.types import BriefingKind, Category, Importance, ProposalStatus, SourceKind, TaskStatus
 
 app = typer.Typer(
     help="Meow OS: your local-first chief of staff.", no_args_is_help=True, add_completion=False
@@ -319,6 +320,7 @@ def capture_cmd(
 def inbox() -> None:
     """Pending proposals."""
     with _session(Settings()) as db:
+        proposals.expire_stale(db, utcnow())
         pending = proposals.list_proposals(db, ProposalStatus.PENDING)
         if not pending:
             console.print("Inbox zero.")
@@ -470,13 +472,15 @@ def sync_cmd(
     finally:
         if llm:
             llm.close()
-    table = Table("Account", "Source", "New", "Proposals", "Problem")
+    table = Table("Account", "Source", "New", "Proposals", "Calendar", "Problem")
     for r in run.google.results:
+        calendar = f"+{r.pushed} / -{r.removed}" if r.pushed or r.removed else ""
         table.add_row(
             r.account,
             r.source.value,
             str(r.new_items),
             str(r.proposals),
+            calendar,
             f"[red]{r.error}[/]" if r.error else "",
         )
     console.print(table)
@@ -492,3 +496,26 @@ def sync_cmd(
         for email in run.google.reauth_needed:
             console.print(f"[red]{email} needs you to sign in again:[/] meow google login {email}")
         raise typer.Exit(1)
+
+
+@app.command()
+def brief(
+    kind: Annotated[BriefingKind | None, typer.Argument(help="morning or evening")] = None,
+    notify: Annotated[bool, typer.Option(help="Also show a macOS notification")] = False,
+) -> None:
+    """Your briefing right now (morning before 2 PM, evening after, unless you choose)."""
+    settings = Settings()
+    profile = settings.profile
+    now = utcnow()
+    chosen = kind or (
+        BriefingKind.MORNING if now.astimezone(profile.user.tz).hour < 14 else BriefingKind.EVENING
+    )
+    notifier: Notifier = MacNotifier() if notify else NullNotifier()
+    with _session(settings) as db:
+        row = briefings.generate(db, profile, chosen, now, notifier, force=True)
+        console.print(f"[bold]{chosen.value.title()} briefing[/]  {row.headline}")
+        for section in row.sections:
+            colour = "red" if section["tone"] == "risk" else "cyan"
+            console.print(f"\n[{colour}]{section['heading']}[/]")
+            for item in section["items"]:
+                console.print(f"  • {item}")

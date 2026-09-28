@@ -166,6 +166,17 @@ gmail_max_messages = 200           # per sync, newest first
 calendar_ids = ["primary"]
 classroom_lookback_days = 60       # coursework/announcements updated within this window
 extract_batch = 25                 # emails/announcements sent to the model per run
+push_focus_blocks = true           # approved focus blocks go to a calendar Meow creates
+focus_calendar_name = "Meow focus"
+focus_reminder_minutes = 5         # phone/desktop reminder before each block (0 = none)
+
+# ── Briefings (while `meow serve` runs; never during quiet hours) ───────
+
+[briefings]
+morning = "08:15"
+evening = "22:00"
+notify = true                      # macOS notification when a briefing is ready
+grace_hours = 3                    # skip a briefing if Meow was off until this long after
 
 # ── Local server ────────────────────────────────────────────────────────
 

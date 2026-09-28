@@ -17,6 +17,7 @@ from support import (
     FakeGmail,
     FakeLLM,
     MemoryTokenStore,
+    RecordingNotifier,
     extracted,
     fake_credentials,
     gmail_msg,
@@ -29,6 +30,7 @@ ORIGIN = {"Origin": BASE}
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 NOW = ist(2026, 9, 28, 16, 0)
 INBOX = FakeGmail([gmail_msg("m1", "CN Lab 4", LAB_EMAIL, ist(2026, 9, 28, 9, 0))])
+NOTIFIER = RecordingNotifier()
 SYNC_DEPS = SyncDeps(apis=FakeAPIs(gmail=INBOX), store=MemoryTokenStore(), load=fake_credentials)
 
 
@@ -44,7 +46,8 @@ def client(settings: Settings, llm: FakeLLM) -> Iterator[TestClient]:
         clock=lambda: NOW,
         llm_factory=lambda: llm,
         sync_deps=SYNC_DEPS,
-        background_sync=False,
+        background=False,
+        notifier=NOTIFIER,
     )
     with TestClient(app, base_url=BASE) as c:
         yield c
@@ -141,7 +144,11 @@ def test_extraction_failure_is_a_502_with_a_reason(settings: Settings) -> None:
         raise LLMError("Model 'qwen3:8b' is not installed. Run: ollama pull qwen3:8b")
 
     app = create_app(
-        settings, clock=lambda: NOW, llm_factory=lambda: FakeLLM(boom), background_sync=False
+        settings,
+        clock=lambda: NOW,
+        llm_factory=lambda: FakeLLM(boom),
+        background=False,
+        notifier=NOTIFIER,
     )
     with TestClient(app, base_url=BASE) as c:
         r = c.post("/api/capture", json={"text": LAB_EMAIL}, headers=AUTH)
@@ -208,6 +215,8 @@ def test_sync_over_json(client: TestClient) -> None:
             "source": "gmail",
             "new_items": 1,
             "proposals": 0,
+            "pushed": 0,
+            "removed": 0,
             "error": None,
         }
     ]

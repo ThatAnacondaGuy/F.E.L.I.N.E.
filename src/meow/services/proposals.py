@@ -6,6 +6,7 @@ everything else is pending until you approve, edit-and-approve, or reject it.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Self
 from zoneinfo import ZoneInfo
 
@@ -222,6 +223,23 @@ def list_proposals(
     return list(db.scalars(stmt))
 
 
+def expire_stale(db: Session, now: datetime) -> int:
+    """Pending focus blocks whose start time has passed can't be approved any more."""
+    expired = 0
+    for p in list_proposals(db, ProposalStatus.PENDING):
+        if p.kind is not ProposalKind.SCHEDULE_FOCUS_BLOCK:
+            continue
+        if datetime.fromisoformat(p.payload["start_at"]) <= now:
+            p.status, p.decided_at, p.decided_by = ProposalStatus.EXPIRED, now, "meow"
+            audit.record(
+                db, actor="meow", action="proposal.expired", entity_type="proposal", entity_id=p.id
+            )
+            expired += 1
+    if expired:
+        db.commit()
+    return expired
+
+
 def inbox_order(pending: list[Proposal]) -> list[Proposal]:
     """New tasks first (newest on top), then focus blocks in the order they happen."""
     tasks_first = [p for p in pending if p.kind is ProposalKind.CREATE_TASK]
@@ -234,8 +252,16 @@ def inbox_order(pending: list[Proposal]) -> list[Proposal]:
 
 
 def approve_all(
-    db: Session, profile: Profile, kind: ProposalKind, *, actor: str = "user"
+    db: Session,
+    profile: Profile,
+    kind: ProposalKind,
+    *,
+    actor: str = "user",
+    now: datetime | None = None,
 ) -> list[Proposal]:
-    """Approve every pending proposal of one kind (each is recorded as your decision)."""
+    """Approve every pending proposal of one kind (each is recorded as your decision).
+    With ``now``, focus blocks whose time already passed are expired instead."""
+    if now is not None:
+        expire_stale(db, now)
     pending = [p for p in list_proposals(db, ProposalStatus.PENDING) if p.kind is kind]
     return [approve(db, profile, p.id, actor=actor) for p in pending]

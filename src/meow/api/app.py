@@ -23,8 +23,9 @@ from meow.domain.timeutil import utcnow
 from meow.integrations.google.auth import TokenStore, load_credentials
 from meow.integrations.google.sync import APIs, CredentialLoader
 from meow.llm.ollama import JSONChat, OllamaClient
+from meow.notify import MacNotifier, Notifier
 from meow.security import load_or_create_token
-from meow.services.syncing import SyncWorker
+from meow.services.background import BriefingJob, Job, SyncJob, Worker
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,7 +46,8 @@ def create_app(
     clock: Callable[[], datetime] = utcnow,
     llm_factory: Callable[[], JSONChat] | None = None,
     sync_deps: SyncDeps | None = None,
-    background_sync: bool = True,
+    notifier: Notifier | None = None,
+    background: bool = True,
 ) -> FastAPI:
     settings = settings or Settings()
     profile = settings.profile  # validate config before anything starts
@@ -60,9 +62,14 @@ def create_app(
         app.state.session_factory = make_session_factory(engine)
         app.state.token = load_or_create_token(settings)
         worker = None
-        if background_sync and profile.sync.interval_minutes > 0:
-            worker = SyncWorker(settings, app.state.session_factory, clock, app.state.llm_factory)
+        if background:
+            jobs: list[Job] = [
+                SyncJob(settings, app.state.llm_factory),
+                BriefingJob(settings, app.state.notifier),
+            ]
+            worker = Worker(app.state.session_factory, jobs, clock)
             worker.start()
+        app.state.worker = worker
         yield
         if worker:
             worker.stop()
@@ -83,6 +90,8 @@ def create_app(
     )
     app.state.allowed_origins = {f"http://{host}:{port}" for host in LOCAL_HOSTS}
     app.state.sync_deps = sync_deps or SyncDeps()
+    app.state.notifier = notifier or MacNotifier()
+    app.state.worker = None
 
     # Rejects requests whose Host header isn't local: this is what defeats DNS rebinding.
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=LOCAL_HOSTS)

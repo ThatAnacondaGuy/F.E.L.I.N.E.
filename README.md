@@ -20,7 +20,8 @@ v0.2 is a rebuild. Everything listed as working has tests behind it.
 | Web dashboard + JSON API, token-secured | ✅ works |
 | `meow` CLI with a real `doctor` | ✅ works |
 | Google sync: Classroom coursework → proposals (no LLM), Gmail + announcements → model, Calendar → busy time | ✅ works (read-only, multi-account) |
-| Focus blocks pushed to a "Meow" Google calendar, briefings | ⏳ next |
+| Approved focus blocks on a "Meow focus" Google calendar (the only calendar Meow can edit) | ✅ works |
+| Morning and evening briefings, with macOS notifications outside quiet hours | ✅ works |
 | Desktop cat, voice, focus mode | ⏳ later slices |
 
 ## How it's built, and why
@@ -68,7 +69,7 @@ uv run meow inbox               # then: meow approve <id-prefix> / meow reject <
 
 ## Connecting Google
 
-Meow reads Gmail, Calendar and Classroom **read-only**. Tokens live in the macOS Keychain; account addresses live in your local database, never in this repo.
+Meow reads Gmail, Calendar and Classroom **read-only**. The one thing it writes is a calendar it creates itself, "Meow focus", holding the focus blocks you approved; the `calendar.app.created` permission means it cannot touch any other calendar. Tokens live in the macOS Keychain; account addresses live in your local database, never in this repo.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), in your project: enable the Gmail, Calendar and Classroom APIs, and create an OAuth client of type **Desktop app**.
 2. Under **OAuth consent screen → Audience → Test users**, add every account you'll connect. (In Testing mode only listed users can sign in, and Google expires the sign-in every 7 days; Meow tells you when to log in again.)
@@ -84,6 +85,12 @@ uv run meow google accounts                                 # what synced, and a
 
 Classroom assignments become proposals directly from their structured due date and course (no model involved); work you've turned in is skipped, and if a teacher changes a deadline before you decide, the proposal is replaced. Emails (Primary tab only, by default) and class announcements go to the local model, which must quote the text for every task it proposes. Calendar events become busy time the planner works around; all-day events, events marked "free" and invitations you declined don't block time.
 
+When you approve focus blocks, they appear on the "Meow focus" calendar within a minute (with a 5-minute reminder, so your phone nudges you too). Finish or drop a task and its upcoming blocks come off the calendar on the next sync. If you delete the calendar, Meow recreates it; events you add to it yourself are left alone.
+
+## Briefings
+
+While `meow serve` runs, Meow writes a **morning briefing** at 08:15 (your day's blocks, focus sessions, what's due in 48 hours, what's at risk, top priorities) and an **evening review** at 22:00 (what you finished, what's left tonight, what's due tomorrow). Each shows on the dashboard and as a macOS notification, never during quiet hours, and once per day. They're built from your data by code, not by a model, so they're instant and never invent a deadline. `meow brief` prints one on demand. Times live under `[briefings]` in the config.
+
 College Google Workspace accounts are often locked down by the admin; if sign-in says the app is blocked, only the admin can allow it.
 
 ## Configuration
@@ -93,7 +100,7 @@ Defaults live in [`src/meow/defaults.toml`](src/meow/defaults.toml): the weekly 
 ## Development
 
 ```bash
-uv run pytest                   # ~160 tests, about a second
+uv run pytest                   # ~210 tests, under two seconds
 uv run ruff check && uv run ruff format --check
 uv run mypy                     # strict
 MEOW_HOME=.meow-dev MEOW_API_TOKEN=dev-token uv run meow serve   # throwaway dev data
@@ -104,19 +111,20 @@ Code layout (`src/meow`):
 | Path | What |
 |---|---|
 | `config.py`, `defaults.toml` | Profile model and file locations |
-| `domain/` | Pure logic: schedule, prioritizer, planner (no I/O) |
+| `domain/` | Pure logic: schedule, prioritizer, planner, deadline-phrase dates (no I/O) |
 | `db/` | SQLAlchemy models, UTC-safe column types, Alembic migrations |
-| `services/` | Use cases: tasks, proposals, autonomy, capture, planning, accounts, sync, audit |
+| `services/` | Use cases: tasks, proposals, autonomy, capture, planning, accounts, sync, briefings, background worker, audit |
 | `integrations/google/` | OAuth + Keychain tokens, thin API adapters, pure normalizers, sync |
 | `llm/` | Ollama client and the evidence-checked extractor (+ prompt) |
 | `api/` | FastAPI app, auth, JSON routes, server-rendered pages |
+| `notify.py` | macOS notifications (text passed as arguments, never as script) |
 | `cli.py`, `doctor.py` | The `meow` command |
 
 The earlier prototype lives in the git history of `main` (its cat widget and AppleScript helpers get ported in later slices).
 
 ## Roadmap
 
-1. **Deadline Guardian** (in progress): ~~Google OAuth, Classroom/Gmail/Calendar sync~~ done; next: focus blocks pushed to a separate "Meow" calendar, morning and evening briefings, an extraction eval set built from your own approvals and rejections.
+1. **Deadline Guardian**: Google sync, the Meow focus calendar and briefings are done. Remaining: an extraction eval set built from your own approvals and rejections, to pick the model by measurement.
 2. **Developer co-pilot**: stale-repo detection from the GitHub API, `meow explain` for failed shell commands, commit-message suggestions (never auto-push).
 3. **Presence**: the desktop cat as a client of this API; wake word, then VAD, then local speech-to-text; macOS Focus through Shortcuts.
 4. **Chat with tools** over your tasks and plan, every tool tagged L1/L2/L3.

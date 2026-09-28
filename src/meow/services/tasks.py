@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import CursorResult, delete, select
 from sqlalchemy.orm import Session
 
 from meow.config import Profile
@@ -82,10 +83,21 @@ def get_task(db: Session, task_id: str) -> Task:
     return task
 
 
-def set_status(db: Session, task_id: str, status: TaskStatus, *, actor: str) -> Task:
+def set_status(
+    db: Session, task_id: str, status: TaskStatus, *, actor: str, now: datetime | None = None
+) -> Task:
     task = get_task(db, task_id)
     task.status = status
-    task.completed_at = utcnow() if status is TaskStatus.DONE else None
+    now = now or utcnow()
+    task.completed_at = now if status is TaskStatus.DONE else None
+    cleared = 0
+    if status is not TaskStatus.TODO:
+        # Finished or dropped: its upcoming focus blocks free up (and leave the calendar
+        # on the next sync). Past blocks stay as history.
+        result = db.execute(
+            delete(FocusSession).where(FocusSession.task_id == task.id, FocusSession.start_at > now)
+        )
+        cleared = cast(CursorResult[Any], result).rowcount
     audit.record(
         db,
         actor=actor,
@@ -93,6 +105,7 @@ def set_status(db: Session, task_id: str, status: TaskStatus, *, actor: str) -> 
         entity_type="task",
         entity_id=task.id,
         title=task.title,
+        focus_blocks_cleared=cleared,
     )
     db.commit()
     return task

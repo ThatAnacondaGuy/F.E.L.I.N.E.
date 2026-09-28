@@ -8,11 +8,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from meow import __version__
 from meow.api import schemas as s
-from meow.api.deps import DB, LLM, Now, ProfileDep, require_auth
+from meow.api.deps import DB, LLM, Now, ProfileDep, nudge_worker, require_auth
 from meow.domain.prioritizer import Prioritizer
 from meow.llm.extraction import ExtractionError, Extractor
-from meow.services import accounts, audit, autonomy, capture, planning, proposals, syncing, tasks
-from meow.types import ProposalKind, ProposalStatus, TaskStatus
+from meow.services import (
+    accounts,
+    audit,
+    autonomy,
+    briefings,
+    capture,
+    planning,
+    proposals,
+    syncing,
+    tasks,
+)
+from meow.types import BriefingKind, ProposalKind, ProposalStatus, TaskStatus
 
 public = APIRouter(prefix="/api")
 router = APIRouter(prefix="/api", dependencies=[Depends(require_auth)])
@@ -46,9 +56,9 @@ def get_task(task_id: str, db: DB, profile: ProfileDep, now: Now) -> s.TaskOut:
 
 
 @router.post("/tasks/{task_id}/{new_status}")
-def set_task_status(task_id: str, new_status: TaskStatus, db: DB) -> s.TaskOut:
+def set_task_status(task_id: str, new_status: TaskStatus, db: DB, now: Now) -> s.TaskOut:
     try:
-        return s.TaskOut.of(tasks.set_status(db, task_id, new_status, actor="user"))
+        return s.TaskOut.of(tasks.set_status(db, task_id, new_status, actor="user", now=now))
     except tasks.TaskNotFound:
         raise HTTPException(404, "Task not found") from None
 
@@ -56,15 +66,22 @@ def set_task_status(task_id: str, new_status: TaskStatus, db: DB) -> s.TaskOut:
 @router.get("/proposals")
 def list_proposals(
     db: DB,
+    now: Now,
     status_: Annotated[ProposalStatus | None, Query(alias="status")] = ProposalStatus.PENDING,
 ) -> list[s.ProposalOut]:
+    proposals.expire_stale(db, now)
     return [s.ProposalOut.of(p) for p in proposals.list_proposals(db, status_)]
 
 
 @router.post("/proposals/{proposal_id}/approve")
-def approve(proposal_id: str, body: s.ApproveIn, db: DB, profile: ProfileDep) -> s.ProposalOut:
+def approve(
+    request: Request, proposal_id: str, body: s.ApproveIn, db: DB, profile: ProfileDep
+) -> s.ProposalOut:
     try:
-        return s.ProposalOut.of(proposals.approve(db, profile, proposal_id, edits=body.edits))
+        approved = proposals.approve(db, profile, proposal_id, edits=body.edits)
+        if approved.kind is ProposalKind.SCHEDULE_FOCUS_BLOCK:
+            nudge_worker(request)
+        return s.ProposalOut.of(approved)
     except proposals.ProposalNotFound:
         raise HTTPException(404, "Proposal not found") from None
     except (proposals.ProposalError, tasks.TaskNotFound) as exc:
@@ -173,3 +190,19 @@ def sync_now(request: Request, db: DB, now: Now, llm: LLM) -> s.SyncRunOut:
     except syncing.SyncBusy as exc:
         raise HTTPException(409, str(exc)) from None
     return s.SyncRunOut.of(run)
+
+
+@router.get("/briefings/today")
+def todays_briefing(db: DB, profile: ProfileDep, now: Now) -> s.BriefingOut:
+    row = briefings.latest(db, profile, now)
+    if row is None:
+        raise HTTPException(404, "No briefing yet today")
+    return s.BriefingOut.of(row)
+
+
+@router.post("/briefings/{kind}")
+def make_briefing(
+    request: Request, kind: BriefingKind, db: DB, profile: ProfileDep, now: Now
+) -> s.BriefingOut:
+    row = briefings.generate(db, profile, kind, now, request.app.state.notifier, force=True)
+    return s.BriefingOut.of(row)

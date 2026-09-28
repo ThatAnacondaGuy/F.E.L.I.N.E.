@@ -24,7 +24,11 @@ KEYRING_SERVICE = "MeowOS-google"
 IDENTITY_SCOPES = ["openid", "https://www.googleapis.com/auth/userinfo.email"]
 SCOPES_BY_SOURCE: dict[SourceKind, list[str]] = {
     SourceKind.GMAIL: ["https://www.googleapis.com/auth/gmail.readonly"],
-    SourceKind.CALENDAR: ["https://www.googleapis.com/auth/calendar.readonly"],
+    SourceKind.CALENDAR: [
+        # Read events for busy time, and manage only the calendar Meow creates for focus blocks.
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+        "https://www.googleapis.com/auth/calendar.app.created",
+    ],
     SourceKind.CLASSROOM: [
         "https://www.googleapis.com/auth/classroom.courses.readonly",
         "https://www.googleapis.com/auth/classroom.coursework.me.readonly",

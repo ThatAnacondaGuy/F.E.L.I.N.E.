@@ -63,6 +63,7 @@ class ProposalStatus(StrEnum):
     AUTO_APPROVED = "auto_approved"
     REJECTED = "rejected"
     SUPERSEDED = "superseded"  # replaced by a newer plan before you decided; not a rejection
+    EXPIRED = "expired"  # a focus block whose time passed before you decided; not a rejection
 
 
 class SourceKind(StrEnum):
@@ -86,3 +87,8 @@ class CoursePriority(StrEnum):
     HIGHEST = "highest"
     HIGH = "high"
     STANDARD = "standard"
+
+
+class BriefingKind(StrEnum):
+    MORNING = "morning"
+    EVENING = "evening"

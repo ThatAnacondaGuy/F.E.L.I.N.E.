@@ -109,6 +109,9 @@ form.bulk { margin: 0 0 16px; }
 .inline-form { display: inline; }
 button.small { padding: 4px 10px; font-size: 13px; }
 .warn { color: var(--err); }
+.briefing header { display: flex; align-items: baseline; gap: 10px; }
+.briefing header h2 { margin: 0; }
+.briefing .headline { font-size: 17px; font-weight: 600; margin: 8px 0; }
 details > summary { cursor: pointer; color: var(--accent); font-weight: 550; }
 details.card > summary { margin: -4px 0; }
 details[open].card > summary { margin-bottom: 12px; }

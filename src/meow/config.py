@@ -154,6 +154,17 @@ class SyncConfig(_Model):
     calendar_ids: tuple[str, ...]
     classroom_lookback_days: int = Field(ge=1, le=365)
     extract_batch: int = Field(ge=1, le=500)
+    push_focus_blocks: bool
+    focus_calendar_name: str
+    focus_calendar_account: str | None = None  # default: the first account syncing calendar
+    focus_reminder_minutes: int = Field(ge=0, le=120)
+
+
+class BriefingsConfig(_Model):
+    morning: time
+    evening: time
+    notify: bool
+    grace_hours: float = Field(gt=0, le=12)  # don't send a morning briefing at midnight
 
 
 class ServerConfig(_Model):
@@ -170,6 +181,7 @@ class Profile(_Model):
     llm: LLMConfig
     autonomy: AutonomyConfig
     sync: SyncConfig
+    briefings: BriefingsConfig
     server: ServerConfig
 
     @model_validator(mode="after")

@@ -43,6 +43,13 @@ def get_llm(request: Request) -> JSONChat:
     return factory()
 
 
+def nudge_worker(request: Request) -> None:
+    """Ask the background worker to sync soon (e.g. to update the Meow calendar)."""
+    worker = getattr(request.app.state, "worker", None)
+    if worker is not None:
+        worker.nudge_sync()
+
+
 def _request_origin(request: Request) -> str | None:
     if origin := request.headers.get("origin"):
         return origin

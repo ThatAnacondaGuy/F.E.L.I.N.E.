@@ -9,6 +9,28 @@
   </p>
 </section>
 
+{% if briefing %}
+<section class="card briefing">
+  <header>
+    <h2>{{ briefing.kind|title }} briefing</h2>
+    <span class="muted small">{{ local(briefing.created_at, "%H:%M") }}</span>
+    <form method="post" action="/briefings/{{ briefing.kind }}" class="inline-form"><button class="ghost small">Refresh</button></form>
+  </header>
+  <p class="headline">{{ briefing.headline }}</p>
+  {% if briefing.sections %}
+  <details>
+    <summary>Details</summary>
+    {% for s in briefing.sections %}
+    <h3 class="label {% if s.tone == 'risk' %}warn{% endif %}">{{ s.heading }}</h3>
+    <ul class="plain">{% for item in s["items"] %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% endfor %}
+  </details>
+  {% endif %}
+</section>
+{% else %}
+<form method="post" action="/briefings/{{ brief_kind }}" class="bulk"><button class="ghost">Brief me now</button></form>
+{% endif %}
+
 {% for a in reauth %}
 <p class="flash err" role="alert">Google signed Meow out of <strong>{{ a.email }}</strong>. Run <code>meow google login {{ a.email }}</code> to reconnect.</p>
 {% endfor %}
