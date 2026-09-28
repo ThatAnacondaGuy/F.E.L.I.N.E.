@@ -74,15 +74,15 @@ class ExtractionError(RuntimeError):
 _TYPOGRAPHY = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'", "–": "-", "—": "-"})
 
 
-def _normalize(text: str) -> str:
+def normalize_text(text: str) -> str:
     text = unicodedata.normalize("NFKC", text).translate(_TYPOGRAPHY)
     return re.sub(r"\s+", " ", text).strip().casefold()
 
 
 def evidence_in_source(evidence: str, source: str) -> bool:
     """Every fragment of the quote (split on ellipses) must appear in the source."""
-    haystack = _normalize(source)
-    fragments = [f.strip(" \"'") for f in re.split(r"\.\.\.|…", _normalize(evidence))]
+    haystack = normalize_text(source)
+    fragments = [f.strip(" \"'") for f in re.split(r"\.\.\.|…", normalize_text(evidence))]
     fragments = [f for f in fragments if f]
     return bool(fragments) and all(f in haystack for f in fragments)
 
