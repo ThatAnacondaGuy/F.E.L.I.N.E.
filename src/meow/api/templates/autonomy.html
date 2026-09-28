@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Autonomy · Meow OS{% endblock %}
+{% block content %}
+<h1>Autonomy</h1>
+<p class="muted">Meow only earns the right to act on its own by being right. After
+{{ profile.autonomy.promotion_min_decisions }} of your decisions with at least
+{{ "%.0f"|format(profile.autonomy.promotion_min_acceptance * 100) }}% approved unedited, you can
+promote a kind of action one step. A single rejection while it is automatic sends it back.</p>
+
+<table class="list">
+  <thead><tr><th>Action</th><th>Level</th><th>Track record</th><th>Ceiling</th><th></th></tr></thead>
+  <tbody>
+  {% for s in statuses %}
+    <tr>
+      <td><strong>{{ s.kind.value.replace("_", " ") }}</strong></td>
+      <td><span class="pill">{{ s.level.value }}</span> {{ s.level.label }}</td>
+      <td>
+        {{ s.accepted_clean }} clean · {{ s.accepted_edited }} edited · {{ s.rejected }} rejected
+        <div class="muted small">{{ s.decisions }}/{{ s.window }} decisions · {{ "%.0f"|format(s.acceptance * 100) }}% clean</div>
+      </td>
+      <td>{{ s.most_autonomous.value }} ({{ s.most_autonomous.label }})</td>
+      <td>
+        {% if s.eligible %}
+        <form method="post" action="/autonomy/{{ s.kind.value }}/promote"><button class="primary">Promote to {{ s.next_level.value }}</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

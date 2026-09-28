@@ -52,8 +52,18 @@ data/chroma/
 # Secrets & Credentials
 configs/credentials.json
 configs/token.json
+credentials.json
+token.json
+api_token
 *.pem
 *.key
+
+# Meow dev data directory (MEOW_HOME for local testing)
+.meow-dev/
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
 
 # macOS
 .DS_Store

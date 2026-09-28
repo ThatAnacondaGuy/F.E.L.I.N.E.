@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Meow OS{% endblock %}</title>
+  <link rel="stylesheet" href="/static/meow.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M6 26V9l6 5h8l6-5v17z' fill='%23e8a33d'/></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 26V9l6 5h8l6-5v17z"/></svg>
+      Meow OS
+    </a>
+    <nav>
+      {% set here = request.url.path %}
+      <a href="/" {% if here == '/' %}aria-current="page"{% endif %}>Today</a>
+      <a href="/inbox" {% if here == '/inbox' %}aria-current="page"{% endif %}>Inbox{% if pending_count %} <span class="count">{{ pending_count }}</span>{% endif %}</a>
+      <a href="/tasks" {% if here == '/tasks' %}aria-current="page"{% endif %}>Tasks</a>
+      <a href="/autonomy" {% if here == '/autonomy' %}aria-current="page"{% endif %}>Autonomy</a>
+      <a href="/activity" {% if here == '/activity' %}aria-current="page"{% endif %}>Activity</a>
+    </nav>
+  </header>
+  <main>
+    {% if note %}<p class="flash ok" role="status">{{ note }}</p>{% endif %}
+    {% if error %}<p class="flash err" role="alert">{{ error }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Activity · Meow OS{% endblock %}
+{% block content %}
+<h1>Activity</h1>
+<p class="muted">Everything Meow and you did, newest first.</p>
+{% if entries %}
+<table class="list compact">
+  <thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr>
+      <td class="nowrap">{{ local(e.at, "%d %b %H:%M:%S") }}</td>
+      <td>{{ e.actor }}</td>
+      <td><code>{{ e.action }}</code>{% if e.authority_level %} <span class="pill">{{ e.authority_level.value }}</span>{% endif %}</td>
+      <td class="muted small">{% for k, v in e.detail.items() if v not in (None, "") %}{{ k }}: {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">Nothing yet.</p>
+{% endif %}
+{% endblock %}

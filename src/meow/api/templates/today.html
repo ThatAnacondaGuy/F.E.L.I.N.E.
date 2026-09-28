@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>{{ greeting }}, {{ profile.user.name }}.</h1>
+  <p class="muted">
+    {{ local(now, "%A %d %B, %H:%M") }}
+    {% if block %} · <span class="block block-{{ block.kind.value }}">{{ block.name }}</span>{% endif %}
+    {% if quiet %} · quiet hours, Meow stays silent{% endif %}
+  </p>
+</section>
+
+{% for a in reauth %}
+<p class="flash err" role="alert">Google signed Meow out of <strong>{{ a.email }}</strong>. Run <code>meow google login {{ a.email }}</code> to reconnect.</p>
+{% endfor %}
+
+{% if at_risk %}
+<section class="card risk">
+  <h2>At risk</h2>
+  <ul class="plain">
+    {% for s in at_risk %}<li><strong>{{ s.title }}</strong> <span class="muted">{{ s.reason }}</span></li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<div class="grid">
+  <section class="card">
+    <h2>Until you sleep</h2>
+    {% if booked %}
+      <h3 class="label">Approved focus blocks</h3>
+      <ul class="timeline">
+        {% for s in booked %}
+        <li><time>{{ local(s.start_at, "%H:%M") }}–{{ local(s.end_at, "%H:%M") }}</time> {{ s.task.title }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+    {% if suggested %}
+      <h3 class="label">Suggested by the planner</h3>
+      <ul class="timeline suggested">
+        {% for s in suggested %}
+        <li><time>{{ local(s.interval.start, "%H:%M") }}–{{ local(s.interval.end, "%H:%M") }}</time> {{ s.title }}</li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/plan/propose"><button>Propose as focus blocks</button></form>
+    {% elif not booked %}
+      <p class="muted">Nothing planned. Add a task or capture something in the inbox.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Top priorities</h2>
+    {% if ranked %}
+    <ol class="ranked">
+      {% for r in ranked %}
+      <li>
+        <span class="score" title="Priority score out of 100">{{ "%.0f"|format(r.score.total) }}</span>
+        <div>
+          <strong>{{ r.task.title }}</strong>
+          <p class="muted small">{{ r.score.top_reasons()|join(" · ") }}</p>
+        </div>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+      <p class="muted">No open tasks.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="footer-row">
+  {% if pending_count %}
+  <a class="button" href="/inbox">Review {{ pending_count }} pending proposal{{ "s" if pending_count != 1 }}</a>
+  {% endif %}
+  <div class="sync-status muted small">
+    {% if connected %}
+      {{ connected|length }} Google account{{ "s" if connected|length != 1 }} ·
+      {% if last_sync %}last synced {{ local(last_sync, "%a %H:%M") }}{% else %}not synced yet{% endif %}
+      {% if sync_errors %} · <span class="warn">{{ sync_errors|length }} source{{ "s" if sync_errors|length != 1 }} failing</span>{% endif %}
+      <form method="post" action="/sync" class="inline-form"><button class="ghost small">Sync now</button></form>
+    {% else %}
+      No Google account connected. Run <code>meow google login you@gmail.com</code>.
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

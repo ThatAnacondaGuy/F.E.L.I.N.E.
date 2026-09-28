@@ -1,54 +1,84 @@
-[build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-include = ["core*", "agents*", "integrations*", "models*", "memory*", "database*", "api*", "scheduler*", "security*"]
-
 [project]
 name = "meow-os"
-version = "0.1.0"
-description = "Local-first AI Chief of Staff"
+version = "0.2.0.dev0"
+description = "Local-first personal chief of staff: turns classes, email and repos into an explainable plan you approve."
 readme = "README.md"
 requires-python = ">=3.13"
+authors = [{ name = "Aniket (ThatAnacondaGuy)" }]
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "pydantic>=2.0",
-    "pydantic-settings",
-    "httpx",
-    "aiosqlite",
-    "chromadb",
-    "apscheduler>=3.10",
-    "google-api-python-client",
-    "google-auth-oauthlib",
-    "google-auth-httplib2",
-    "pygithub",
-    "feedparser",
-    "beautifulsoup4",
-    "selectolax",
-    "keyring",
-    "rich",
-    "typer",
-    "python-multipart",
-    "websockets",
-    "jinja2",
-    "toml",
-    "python-dateutil",
-    "pytz"
+    "alembic>=1.14",
+    "fastapi>=0.115",
+    "google-api-python-client>=2.150",
+    "google-auth>=2.35",
+    "google-auth-oauthlib>=1.2",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "keyring>=25",
+    "platformdirs>=4",
+    "pydantic>=2.9",
+    "python-multipart>=0.0.18",
+    "rich>=13",
+    "sqlalchemy>=2.0.36",
+    "typer>=0.15",
+    "tzdata>=2024.1",
+    "uvicorn[standard]>=0.34",
 ]
 
-[project.optional-dependencies]
+[project.scripts]
+meow = "meow.cli:app"
+
+[dependency-groups]
 dev = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "ruff"
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/meow"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+include = ["src/**/*.py", "tests/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "DTZ", "S"]
+ignore = [
+    "S101", # assert is fine; tests rely on it
+]
+allowed-confusables = ["–", "—", "“", "”", "‘", "’"] # deliberate typography in UI strings
+
+[tool.ruff.lint.isort]
+known-first-party = ["meow"]
+known-local-folder = ["support"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"] # hardcoded test tokens
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = ["-q", "--import-mode=importlib", "--strict-markers"]
+filterwarnings = [
+    "error::DeprecationWarning:meow.*",
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated", # third-party, not ours
+]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/meow"]
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["keyring.*", "googleapiclient.*", "google_auth_oauthlib.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["meow.integrations.google.auth"] # google-auth ships partial type hints
+disallow_untyped_calls = false

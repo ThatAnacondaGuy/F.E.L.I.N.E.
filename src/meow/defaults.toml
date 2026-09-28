@@ -1,0 +1,174 @@
+# Meow OS defaults.
+# Override any value in your own config file (`meow config` prints its path).
+# Tables merge key by key; arrays such as [[schedule]] and [[courses]] replace the default list.
+
+[user]
+name = "Aniket"
+timezone = "Asia/Kolkata"
+github = "ThatAnacondaGuy"
+career_goal = "NVIDIA: GPU, CUDA, AI/ML engineering"
+
+# ── Weekly rhythm ────────────────────────────────────────────────────────
+# kind = sleep    quiet hours: never scheduled, no notifications
+#        routine  busy, never scheduled
+#        college  busy, never scheduled
+#        focus    the only time the planner may place work
+# A block whose end is at or before its start runs past midnight.
+
+[[schedule]]
+name = "Sleep"
+kind = "sleep"
+days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+start = "04:00"
+end = "08:00"
+
+[[schedule]]
+name = "Morning routine"
+kind = "routine"
+days = ["mon", "tue", "wed", "thu", "fri"]
+start = "08:00"
+end = "09:15"
+
+[[schedule]]
+name = "College"
+kind = "college"
+days = ["mon", "tue", "wed", "thu", "fri"]
+start = "09:15"
+end = "16:30"
+
+[[schedule]]
+name = "Deep focus"
+kind = "focus"
+days = ["mon", "tue", "wed", "thu", "fri"]
+start = "16:30"
+end = "04:00"
+
+[[schedule]]
+name = "Weekend"
+kind = "focus"
+days = ["sat", "sun"]
+start = "08:00"
+end = "04:00"
+
+# ── Courses (TE Computer Engineering, 2024 pattern) ─────────────────────
+
+[[courses]]
+code = "PCC301COM"
+name = "Artificial Intelligence"
+priority = "highest"
+why = "Directly aligns with the NVIDIA track"
+career_relevance = 0.6
+aliases = ["AI"]
+
+[[courses]]
+code = "MDM331COM"
+name = "Robotics and Automation"
+priority = "high"
+why = "Hardware/software integration and edge AI"
+career_relevance = 0.4
+aliases = ["Robotics"]
+
+[[courses]]
+code = "PEC321BCOM"
+name = "Cloud Computing"
+priority = "high"
+why = "Virtualization and distributed systems"
+career_relevance = 0.3
+aliases = ["CC"]
+
+[[courses]]
+code = "PCC302COM"
+name = "Computer Networks"
+priority = "standard"
+aliases = ["CN"]
+
+[[courses]]
+code = "PCC303COM"
+name = "Theory of Computation"
+priority = "standard"
+aliases = ["TOC"]
+
+[[courses]]
+code = "IPR"  # open elective; replace with the real course code
+name = "Intellectual Property Rights"
+priority = "standard"
+
+[[courses]]
+code = "ELC342COM"
+name = "Technical Seminar"
+priority = "standard"
+why = "Milestones: literature review, synopsis, final report"
+
+# ── Prioritization ──────────────────────────────────────────────────────
+
+[scoring]
+# Urgency halves for every this-many hours of slack (time left minus estimated work).
+urgency_half_life_hours = 48
+# Tasks estimated at or above this get no quick-win bonus.
+quick_win_minutes = 240
+# Assumed effort when a task has no estimate.
+default_estimate_minutes = 60
+
+[scoring.weights] # must sum to 1.0
+urgency = 0.30
+importance = 0.25
+career = 0.20
+academic = 0.15
+quick_win = 0.10
+
+# ── Planning ────────────────────────────────────────────────────────────
+
+[planner]
+horizon_days = 7
+min_session_minutes = 30
+max_session_minutes = 150
+buffer_minutes = 15
+# Keeps the plan sustainable. Deep focus is ~11.5h on paper; nobody does that daily.
+max_focus_hours_per_day = 6
+granularity_minutes = 15
+
+# ── Local models (Ollama) ───────────────────────────────────────────────
+
+[llm]
+base_url = "http://127.0.0.1:11434"
+# Starting point only; pick the final model by measuring it on your own data.
+extract_model = "qwen3:8b"
+timeout_seconds = 180
+# qwen3 "thinks" by default: ~25x slower and it still got weekdays wrong. Dates are resolved in
+# code now, so thinking is off. Set to true (or remove) to compare on your own data.
+think = false
+
+# ── Earned autonomy ─────────────────────────────────────────────────────
+# Every kind of action starts at `level`. After `promotion_min_decisions` decisions with
+# at least `promotion_min_acceptance` accepted unedited, Meow offers to make it one step more
+# autonomous, never past `most_autonomous`. A rejection while automatic demotes it again.
+
+[autonomy]
+promotion_min_decisions = 20
+promotion_min_acceptance = 0.95
+auto_approve_min_confidence = 0.8
+
+[autonomy.kinds.create_task]
+level = "L2"
+most_autonomous = "L1"
+
+[autonomy.kinds.schedule_focus_block]
+level = "L2"
+most_autonomous = "L1"
+
+# ── Sync (Google accounts are connected with `meow google login`) ───────
+
+[sync]
+interval_minutes = 30              # background sync while `meow serve` runs; 0 = off
+gmail_query = "in:inbox category:primary"
+gmail_lookback_days = 14           # how far back the first sync reads
+gmail_max_messages = 200           # per sync, newest first
+calendar_ids = ["primary"]
+classroom_lookback_days = 60       # coursework/announcements updated within this window
+extract_batch = 25                 # emails/announcements sent to the model per run
+
+# ── Local server ────────────────────────────────────────────────────────
+
+[server]
+host = "127.0.0.1"
+port = 8765
