@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Inbox · Meow OS{% endblock %}
+{% block content %}
+<h1>Inbox</h1>
+<p class="muted">Nothing Meow proposes happens until you approve it. Rejections are how it learns.</p>
+
+<details class="card capture" {% if not proposals %}open{% endif %}>
+  <summary>Capture something</summary>
+  <form method="post" action="/capture" class="stack">
+    <label><span>Title <span class="muted">(optional)</span></span><input name="title" maxlength="500" placeholder="e.g. CN lab announcement"></label>
+    <label>Text<textarea name="text" rows="6" required maxlength="50000" placeholder="Paste an email, a Classroom post, a WhatsApp message…"></textarea></label>
+    <button class="primary">Extract tasks</button>
+    <p class="muted small">Runs on your local model. Each task must quote the text it came from, or it gets dropped.</p>
+  </form>
+</details>
+
+{% if focus_count > 1 %}
+<form method="post" action="/inbox/approve-focus-blocks" class="bulk">
+  <button class="primary">Approve all {{ focus_count }} focus blocks</button>
+</form>
+{% endif %}
+
+{% for p in proposals %}
+<article class="card proposal">
+  <header>
+    <h2>{{ p.summary }}</h2>
+    <span class="pill" title="{{ p.authority_level.label }}">{{ p.authority_level.value }}</span>
+    {% if p.created_by == "extractor" %}<span class="pill conf" title="Model confidence">{{ "%.0f"|format(p.confidence * 100) }}%</span>{% endif %}
+  </header>
+
+  {% if p.kind.value == "create_task" %}
+  <dl class="facts">
+    {% if p.payload.due_at %}<div><dt>Due</dt><dd>{{ local(p.payload.due_at) }}</dd></div>{% endif %}
+    {% if p.payload.estimated_minutes %}<div><dt>Estimate</dt><dd>{{ duration(p.payload.estimated_minutes) }}</dd></div>{% endif %}
+    <div><dt>Importance</dt><dd>{{ p.payload.importance }}</dd></div>
+    {% if p.payload.course_code %}<div><dt>Course</dt><dd>{{ p.payload.course_code }}</dd></div>{% endif %}
+    {% if p.payload.career_relevance %}<div><dt>Career</dt><dd>{{ "%.1f"|format(p.payload.career_relevance) }}</dd></div>{% endif %}
+  </dl>
+  {% endif %}
+
+  {% if p.evidence %}
+  <blockquote>{{ p.evidence }}</blockquote>
+  {% endif %}
+  {% if p.source_item %}
+  <p class="muted small">From {{ p.source_item.kind.value }}{% if p.source_item.title %}: “{{ p.source_item.title }}”{% endif %}{% if p.source_item.author %} by {{ p.source_item.author }}{% endif %}</p>
+  {% endif %}
+
+  <div class="actions">
+    <form method="post" action="/inbox/{{ p.id }}/approve"><button class="primary">Approve</button></form>
+    <form method="post" action="/inbox/{{ p.id }}/reject" class="inline">
+      <input name="reason" placeholder="Why not? (optional)" maxlength="1000">
+      <button class="ghost">Reject</button>
+    </form>
+  </div>
+
+  {% if p.kind.value == "create_task" %}
+  <details class="edit">
+    <summary>Edit, then approve</summary>
+    <form method="post" action="/inbox/{{ p.id }}/approve" class="stack">
+      <label>Title<input name="title" value="{{ p.payload.title }}" maxlength="200" required></label>
+      <label>Due<input type="datetime-local" name="due" value="{{ local(p.payload.due_at, '%Y-%m-%dT%H:%M') }}"></label>
+      <label>Estimate (minutes)<input type="number" name="minutes" min="1" value="{{ p.payload.estimated_minutes or '' }}"></label>
+      <label>Importance
+        <select name="importance">
+          {% for i in importance %}<option value="{{ i.value }}" {% if i.value == p.payload.importance %}selected{% endif %}>{{ i.value }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="primary">Save and approve</button>
+    </form>
+  </details>
+  {% endif %}
+</article>
+{% else %}
+<p class="empty">Inbox zero. Meow has nothing waiting for you.</p>
+{% endfor %}
+{% endblock %}

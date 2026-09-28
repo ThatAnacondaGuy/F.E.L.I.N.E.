@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Locked · Meow OS</title>
+  <link rel="stylesheet" href="/static/meow.css">
+</head>
+<body class="locked">
+  <main>
+    <h1>{% if forbidden %}Blocked{% else %}Meow is locked{% endif %}</h1>
+    {% if forbidden %}
+      <p>That request came from another website, so Meow refused it.</p>
+    {% elif expired %}
+      <p>That login link has expired (they last two minutes).</p>
+    {% endif %}
+    <p>Open the dashboard from your terminal:</p>
+    <pre><code>meow open</code></pre>
+  </main>
+</body>
+</html>
