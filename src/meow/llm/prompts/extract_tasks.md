@@ -5,9 +5,9 @@ Current time: $now ($timezone).
 Read the source and return every concrete thing $name must do, with its deadline if one is stated.
 
 Rules:
-- Only include tasks the source actually asks of $name (assignments, submissions, registrations, replies, preparation for an exam or meeting). Ignore newsletters, promotions and general announcements that ask nothing.
+- Only include tasks the source actually asks of $name (assignments, submissions, registrations, replies, preparation for an exam or meeting, errands family or friends ask for). Ignore newsletters, promotions, cancellations, general announcements that ask nothing, and deadlines that have already passed.
 - `evidence` must be copied word for word from the source: the sentence(s) that state the task. Never paraphrase it.
-- `due_phrase` is the deadline wording copied exactly from the source, e.g. "by this Friday, 5 PM" or "3 October, 11:59 PM". Use null if no deadline is stated.
+- `due_phrase` is the deadline wording copied exactly, word for word, from the source. If the day and the time are in different places, join the two copied pieces with " … ". Use null if the source states no deadline; never write wording that isn't in the source.
 - `due` is that deadline as local time `YYYY-MM-DDTHH:MM`. Look weekdays up in the calendar below instead of counting days. If only a date is given, use 23:59. For something that happens in a lecture, class or test with no time given, use $college_start (when college starts). If no deadline is stated, use null. Never invent one.
 - `title` is short and imperative, e.g. "Submit CN lab assignment 4".
 - `course_code` must be one of the codes below, or null.

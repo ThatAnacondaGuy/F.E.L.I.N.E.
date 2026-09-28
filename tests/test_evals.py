@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from meow.config import Profile
+import pytest
+from sqlalchemy.orm import Session
+
+from meow.config import Profile, Settings
 from meow.evals.extraction import SEED_PATH, Case, load_cases, run_eval, summarise
 from meow.llm.extraction import Extractor
 
-from support import FakeLLM, extracted
+from support import LAB_EMAIL, FakeLLM, extracted, ist
 
 
 def test_seed_benchmark_loads_and_has_negatives() -> None:
@@ -51,3 +54,70 @@ def test_false_positive_on_a_negative_and_optional_items(profile: Profile) -> No
     assert s.clean_negatives == "0/1"
     assert results[1].expected == 0  # a missed optional item is not held against the model
     assert s.precision == 0.0
+
+
+def test_export_uses_your_decisions_as_ground_truth(db: Session, profile: Profile) -> None:
+    from meow.evals.extraction import cases_from_decisions
+    from meow.services import capture, proposals
+
+    two_tasks = FakeLLM(
+        {
+            "tasks": [
+                extracted(),
+                extracted(
+                    title="Fake",
+                    evidence="Late submissions will not be accepted.",
+                    due_phrase=None,
+                    due=None,
+                ),
+            ]
+        }
+    )
+    result = capture.capture_text(
+        db, profile, Extractor(two_tasks, profile), LAB_EMAIL, now=ist(2026, 9, 28, 18, 0)
+    )
+    real, fake = result.proposals
+    proposals.approve(db, profile, real.id, edits={"due_at": "2026-10-02T17:00:00+05:30"})
+    proposals.reject(db, profile, fake.id, reason="not a task")
+
+    (case,) = cases_from_decisions(db, profile)
+    (task,) = case.expected  # the rejected one is not expected
+    assert task.due == "2026-10-02T17:00"  # your edit, not the model's answer
+    assert task.anchor == ["Submit lab assignment 4 by Friday"]
+    assert case.body == LAB_EMAIL and "mine" in case.tags
+
+
+def test_export_skips_sources_you_have_not_fully_decided(db: Session, profile: Profile) -> None:
+    from meow.evals.extraction import cases_from_decisions
+    from meow.services import capture
+
+    capture.capture_text(
+        db,
+        profile,
+        Extractor(FakeLLM({"tasks": [extracted()]}), profile),
+        LAB_EMAIL,
+        now=ist(2026, 9, 28, 18, 0),
+    )
+    assert cases_from_decisions(db, profile) == []  # still pending
+
+
+def test_eval_run_command(monkeypatch: pytest.MonkeyPatch, settings: Settings) -> None:
+    from typer.testing import CliRunner
+
+    import meow.cli
+
+    monkeypatch.setattr(meow.cli, "OllamaClient", lambda *a, **k: _ClosingFake({"tasks": []}))
+    r = CliRunner().invoke(
+        meow.cli.app,
+        ["eval", "run", "--case", "newsletter", "--case", "promo"],
+        env={"COLUMNS": "200"},
+    )
+    assert r.exit_code == 0, r.output
+    assert "2/2" in r.output  # both negatives stayed clean
+    reports = list((settings.home / "evals" / "reports").glob("*.json"))
+    assert len(reports) == 1
+
+
+class _ClosingFake(FakeLLM):
+    def close(self) -> None:
+        pass

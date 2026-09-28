@@ -81,6 +81,8 @@ def read_time(text: str) -> time | None:
 def read_date(text: str, reference: date) -> date | None:
     if re.search(r"\bday after tomorrow\b", text):
         return reference + timedelta(days=2)
+    if re.search(r"\byesterday\b", text):
+        return reference - timedelta(days=1)
     if re.search(r"\btomorrow\b|\btmrw\b|\btmr\b", text):
         return reference + timedelta(days=1)
     if re.search(r"\btoday\b|\btonight\b", text):
@@ -108,11 +110,27 @@ def read_date(text: str, reference: date) -> date | None:
             pass  # not a date after all; a weekday may still be there
     if m := _WEEKDAY_RE.search(text):
         target = next(i for i, w in enumerate(WEEKDAYS) if w.startswith(m.group(1)[:3]))
+        if re.search(r"\b(last|previous|past)\s+$", text[: m.start()]):
+            # "last Friday": the most recent one before today.
+            return reference - timedelta(days=(reference.weekday() - target) % 7 or 7)
         # "Friday", "this Friday", "by Friday", "next Friday": the coming one. Naming today's
         # weekday means next week (people say "today" for today).
         ahead = (target - reference.weekday()) % 7 or 7
         return reference + timedelta(days=ahead)
     return None
+
+
+_TIME_CUE_RE = re.compile(
+    r"\b(today|tonight|tomorrow|tmrw|yesterday|week|weekend|month|days?|hours?|noon|midnight"
+    r"|eod|deadline|due|until|till|kal|parso|aaj|baje|din|tak|raat|shaam|subah)\b"
+    r"|\b\d{1,2}(st|nd|rd|th)\b"
+)
+
+
+def mentions_time(phrase: str) -> bool:
+    """Does the wording talk about *when* at all? ("form groups of 3" does not.)"""
+    text = phrase.lower()
+    return bool(_TIME_CUE_RE.search(text) or read_time(text) or read_date(text, date(2000, 1, 3)))
 
 
 def resolve(phrase: str, reference: date) -> Resolved | None:

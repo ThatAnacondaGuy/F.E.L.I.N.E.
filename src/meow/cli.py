@@ -48,6 +48,8 @@ google_app = typer.Typer(
     help="Connect Google accounts (Gmail, Calendar, Classroom).", no_args_is_help=True
 )
 app.add_typer(google_app, name="google")
+eval_app = typer.Typer(help="Measure the extractor on labelled messages.", no_args_is_help=True)
+app.add_typer(eval_app, name="eval")
 console = Console()
 
 WEEKDAYS = {
@@ -519,3 +521,153 @@ def brief(
             console.print(f"\n[{colour}]{section['heading']}[/]")
             for item in section["items"]:
                 console.print(f"  • {item}")
+
+
+# ── evals ────────────────────────────────────────────────────────────────
+
+THINK = {"on": True, "off": False, "default": None}
+
+
+@eval_app.command("run")
+def eval_run(
+    dataset: Annotated[Path | None, typer.Option(help="JSONL cases (default: seed set)")] = None,
+    model: Annotated[list[str] | None, typer.Option(help="Repeat to compare models")] = None,
+    think: Annotated[
+        list[str] | None, typer.Option(help="on, off or default; repeat to compare")
+    ] = None,
+    case: Annotated[list[str] | None, typer.Option(help="Only these case ids")] = None,
+    verbose: Annotated[bool, typer.Option(help="Show misses and false alarms")] = False,
+) -> None:
+    """Measure task extraction on labelled messages, for one or more models."""
+    from meow.evals import extraction as ev
+
+    settings = Settings()
+    profile = settings.profile
+    cases = ev.load_cases(dataset.expanduser() if dataset else ev.SEED_PATH)
+    if case:
+        cases = [c for c in cases if c.id in case]
+    if not cases:
+        console.print("[red]No cases to run.[/]")
+        raise typer.Exit(1)
+    try:
+        thinks = [
+            THINK[t]
+            for t in (
+                think
+                or [
+                    "default" if profile.llm.think is None else "on" if profile.llm.think else "off"
+                ]
+            )
+        ]
+    except KeyError:
+        raise typer.BadParameter("--think takes on, off or default") from None
+    summaries = []
+    stamp = utcnow().strftime("%Y%m%d-%H%M%S")
+    for name in model or [profile.llm.extract_model]:
+        for flag in thinks:
+            label = f"{name} (think {'default' if flag is None else 'on' if flag else 'off'})"
+            variant = profile.model_copy(
+                update={
+                    "llm": profile.llm.model_copy(update={"extract_model": name, "think": flag})
+                }
+            )
+            client = OllamaClient(variant.llm.base_url, **variant.llm.client_options())
+            done = 0
+
+            def tick(result: ev.CaseResult, total: int = len(cases), label: str = label) -> None:
+                nonlocal done
+                done += 1
+                mark = (
+                    "[red]error[/]"
+                    if result.error
+                    else (
+                        "[green]ok[/]"
+                        if not result.missed
+                        and not result.false_positives
+                        and all(m.due_ok is not False for m in result.matches)
+                        else "[yellow]off[/]"
+                    )
+                )
+                console.print(
+                    f"  {label}  {done}/{total}  {result.id}  {mark}  [dim]{result.seconds:.1f}s[/]"
+                )
+
+            try:
+                results = ev.run_eval(cases, Extractor(client, variant), variant, progress=tick)
+            finally:
+                client.close()
+            summary = ev.summarise(results, name, flag)
+            summaries.append((label, summary))
+            report = (
+                settings.home
+                / "evals"
+                / "reports"
+                / f"{stamp}-{name.replace(':', '_')}-{flag}.json"
+            )
+            ev.write_report(report, summary, results)
+            if verbose:
+                for r in results:
+                    for m in r.matches:
+                        if m.predicted_title is None:
+                            console.print(f"  [red]missed[/] {r.id}: {m.anchor}")
+                        elif m.due_ok is False:
+                            console.print(
+                                f"  [yellow]deadline[/] {r.id}: got {m.predicted_due}, "
+                                f"expected {m.expected_due}"
+                            )
+                        elif m.course_ok is False:
+                            console.print(f"  [yellow]course[/] {r.id}: {m.predicted_title}")
+                    for fp in r.false_positives:
+                        console.print(f"  [magenta]extra[/] {r.id}: {fp}")
+                    if r.error:
+                        console.print(f"  [red]error[/] {r.id}: {r.error}")
+            console.print(f"  report: {report}")
+    table = Table(
+        "Variant",
+        "Precision",
+        "Recall",
+        "F1",
+        "Deadlines",
+        "Courses",
+        "Clean negatives",
+        "Errors",
+        "p50",
+        "Total",
+    )
+    for label, s in summaries:
+        table.add_row(
+            label,
+            f"{s.precision:.2f}",
+            f"{s.recall:.2f}",
+            f"{s.f1:.2f}",
+            f"{s.deadline_accuracy:.0%}",
+            f"{s.course_accuracy:.0%}",
+            s.clean_negatives,
+            str(s.errors),
+            f"{s.p50_seconds:.1f}s",
+            f"{s.total_seconds:.0f}s",
+        )
+    console.print(table)
+
+
+@eval_app.command("export")
+def eval_export(
+    out: Annotated[Path | None, typer.Option(help="Where to write the JSONL")] = None,
+) -> None:
+    """Build a private test set from your own approvals, edits and rejections."""
+    from meow.evals import extraction as ev
+
+    settings = Settings()
+    target = (out or settings.home / "evals" / "mine.jsonl").expanduser()
+    with _session(settings) as db:
+        cases = ev.cases_from_decisions(db, settings.profile)
+    if not cases:
+        console.print("Nothing to export yet: approve or reject some extracted proposals first.")
+        raise typer.Exit(1)
+    ev.save_cases(cases, target)
+    tasks_n = sum(len(c.expected) for c in cases)
+    console.print(f"Wrote {len(cases)} case(s), {tasks_n} expected task(s) to {target}")
+    console.print(
+        "[yellow]It contains your real messages: keep it out of git.[/] Then run: "
+        f"meow eval run --dataset {target}"
+    )

@@ -169,8 +169,8 @@ class Extractor:
         reference = source.occurred_at or now
         due = self._check_phrase(item.due_phrase, due, source, reference, notes)
         if due is not None and due < reference - timedelta(days=1):
-            notes.append("deadline was before the message was sent; ignored it")
-            due, confidence = None, confidence * 0.5
+            # The ask's own deadline had passed when the message was sent: a notice, not a task.
+            return "its deadline had already passed when the message was sent"
         course = item.course_code if self.profile.course(item.course_code) else None
         if item.course_code and course is None:
             notes.append(f"unknown course {item.course_code!r}")
@@ -203,9 +203,17 @@ class Extractor:
         reference: datetime,
         notes: list[str],
     ) -> datetime | None:
-        """Resolve the quoted deadline wording in code and prefer it over the model's date."""
-        if not phrase or not evidence_in_source(phrase, f"{source.title}\n{source.body}"):
-            return due
+        """A deadline must be backed by wording that is really in the source; code resolves
+        that wording and prefers it over the model's date. Unbacked deadlines are removed."""
+        backed = (
+            phrase is not None
+            and dates.mentions_time(phrase)
+            and evidence_in_source(phrase, f"{source.title}\n{source.body}")
+        )
+        if not backed or phrase is None:
+            if due is not None:
+                notes.append("removed a deadline the text doesn't state")
+            return None
         tz = self.profile.user.tz
         resolved = dates.resolve(phrase, reference.astimezone(tz).date())
         if resolved is None:

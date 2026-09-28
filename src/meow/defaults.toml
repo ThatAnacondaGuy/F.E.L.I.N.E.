@@ -131,11 +131,11 @@ granularity_minutes = 15
 
 [llm]
 base_url = "http://127.0.0.1:11434"
-# Starting point only; pick the final model by measuring it on your own data.
+# Chosen by `meow eval run` (see README): 100% deadlines vs 81% for qwen3:4b. Re-check on
+# your own data with `meow eval export` then `meow eval run --dataset …`.
 extract_model = "qwen3:8b"
 timeout_seconds = 180
-# qwen3 "thinks" by default: ~25x slower and it still got weekdays wrong. Dates are resolved in
-# code now, so thinking is off. Set to true (or remove) to compare on your own data.
+# Measured: thinking gives the same accuracy at ~3x the time (36s vs 11s per message).
 think = false
 
 # ── Earned autonomy ─────────────────────────────────────────────────────

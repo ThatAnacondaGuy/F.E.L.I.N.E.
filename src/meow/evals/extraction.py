@@ -26,8 +26,11 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from meow.config import Profile
+from meow.db.models import Proposal, SourceItem
 from meow.llm.extraction import (
     Candidate,
     ExtractionError,
@@ -268,3 +271,63 @@ def write_report(path: Path, summary: Summary, results: Sequence[CaseResult]) ->
     path.write_text(
         json.dumps({"summary": asdict(summary), "cases": [asdict(r) for r in results]}, indent=2)
     )
+
+
+# ── building a private test set from your own decisions ──────────────────
+
+HUMAN_DECISIONS = {"approved", "rejected"}
+
+
+def cases_from_decisions(db: Session, profile: Profile) -> list[Case]:
+    """Turn your approvals, edits and rejections into eval cases.
+
+    Only sources whose extractor proposals were *all* decided by you count: approvals (with
+    your edits applied) become expected tasks; rejections become things the model should
+    not have proposed. Auto-approved or undecided proposals were never checked by a human,
+    so sources containing them are skipped.
+    """
+    tz = profile.user.tz
+    rows = db.scalars(
+        select(Proposal).where(
+            Proposal.created_by == "extractor", Proposal.source_item_id.is_not(None)
+        )
+    )
+    by_source: dict[str, list[Proposal]] = {}
+    for p in rows:
+        by_source.setdefault(str(p.source_item_id), []).append(p)
+
+    cases = []
+    for source_id, props in sorted(by_source.items()):
+        if any(p.status.value not in HUMAN_DECISIONS for p in props):
+            continue
+        item = db.get(SourceItem, source_id)
+        if item is None:
+            continue
+        expected = []
+        for p in props:
+            if p.status.value != "approved":
+                continue
+            due = p.payload.get("due_at")
+            local_due = (
+                datetime.fromisoformat(due).astimezone(tz).strftime("%Y-%m-%dT%H:%M")
+                if due
+                else None
+            )
+            words = (p.evidence or p.payload["title"]).split()
+            anchor = " ".join(words[:6])
+            expected.append(
+                ExpectedTask(anchor=[anchor], due=local_due, course=p.payload.get("course_code"))
+            )
+        cases.append(
+            Case(
+                id=f"mine-{source_id[:8]}",
+                sent=item.occurred_at or item.fetched_at,
+                kind=item.kind.value,
+                title=item.title,
+                author=item.author,
+                body=item.body,
+                expected=expected,
+                tags=["mine", item.kind.value],
+            )
+        )
+    return cases

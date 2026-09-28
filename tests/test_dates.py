@@ -28,6 +28,10 @@ MONDAY = date(2026, 9, 28)
         ("by 2 Jan", date(2027, 1, 2), None),  # early next year, not months ago
         ("Wed 10.30 a.m.", date(2026, 9, 30), time(10, 30)),
         ("midnight on Sunday", date(2026, 10, 4), time(23, 59)),
+        # Backwards in time (qwen3 had this right; the resolver used to overwrite it):
+        ("was last Friday", date(2026, 9, 25), None),
+        ("due yesterday", date(2026, 9, 27), None),
+        ("last Monday", date(2026, 9, 21), None),
     ],
 )
 def test_resolve(phrase: str, day: date, clock: time | None) -> None:
@@ -50,3 +54,22 @@ def test_read_time_edge_cases() -> None:
     assert read_time("12 pm") == time(12, 0)
     assert read_time("12:30 am") == time(0, 30)
     assert read_time("room 204") is None
+
+
+@pytest.mark.parametrize(
+    ("phrase", "expected"),
+    [
+        ("by this Friday, 5 PM", True),
+        ("in two days", True),
+        ("before the 10th", True),
+        ("kal tak ... 5 baje tak", True),
+        ("tonight … closes at 11 PM", True),
+        ("form groups of 3 for the mini project", False),  # qwen3 offered this as a deadline
+        ("Share the public URL on Classroom", False),
+        ("room 204", False),
+    ],
+)
+def test_mentions_time(phrase: str, expected: bool) -> None:
+    from meow.domain.dates import mentions_time
+
+    assert mentions_time(phrase) is expected

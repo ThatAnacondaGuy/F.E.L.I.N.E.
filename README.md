@@ -87,11 +87,34 @@ Classroom assignments become proposals directly from their structured due date a
 
 When you approve focus blocks, they appear on the "Meow focus" calendar within a minute (with a 5-minute reminder, so your phone nudges you too). Finish or drop a task and its upcoming blocks come off the calendar on the next sync. If you delete the calendar, Meow recreates it; events you add to it yourself are left alone.
 
+College Google Workspace accounts are often locked down by the admin; if sign-in says the app is blocked, only the admin can allow it.
+
 ## Briefings
 
 While `meow serve` runs, Meow writes a **morning briefing** at 08:15 (your day's blocks, focus sessions, what's due in 48 hours, what's at risk, top priorities) and an **evening review** at 22:00 (what you finished, what's left tonight, what's due tomorrow). Each shows on the dashboard and as a macOS notification, never during quiet hours, and once per day. They're built from your data by code, not by a model, so they're instant and never invent a deadline. `meow brief` prints one on demand. Times live under `[briefings]` in the config.
 
-College Google Workspace accounts are often locked down by the admin; if sign-in says the app is blocked, only the admin can allow it.
+## Measuring the extractor
+
+The model is chosen by measurement, not reputation. `meow eval run` runs the real extractor over labelled messages and reports precision and recall (did it find the real tasks, and only those), deadline and course accuracy, false alarms on messages that ask nothing, and speed.
+
+```bash
+uv run meow eval run                                           # the seed benchmark, default model
+uv run meow eval run --model qwen3:8b --model qwen3:4b --think off --think on --verbose
+uv run meow eval export                                        # your own approvals/rejections → private test set
+uv run meow eval run --dataset ~/Library/Application\ Support/MeowOS/evals/mine.jsonl
+```
+
+The seed benchmark ([`src/meow/evals/seed_extraction.jsonl`](src/meow/evals/seed_extraction.jsonl)) is 23 invented messages with hand-checked answers: relative and numeric dates, Hinglish, forwarded mail, lecture-time tests, multi-task announcements, and traps (promos, cancellations, a deadline that already passed). Results on an M5 MacBook, 28 Sep 2026:
+
+| Model | Precision | Recall | Deadlines | Courses | Clean negatives | Time / message |
+|---|---|---|---|---|---|---|
+| **qwen3:8b, thinking off** (default) | 1.00 | 1.00 | **100%** | 100% | 4/4 | 11.4 s |
+| qwen3:8b, thinking on | 1.00 | 1.00 | 100% | 100% | 4/4 | 36.0 s |
+| qwen3:4b, thinking off | 0.96 | 1.00 | 81% | 95% | 3/4 | 6.2 s |
+
+What the benchmark caught along the way, each now fixed in code and covered by a test: the model counted weekdays wrong ("this Friday" on a Wednesday); it copied a deadline phrase from the prompt's own example into an email that had none; it offered task wording ("form groups of 3") as a deadline; and the date resolver read "last Friday" as next Friday. The rule that came out of it: **a deadline must be backed by time wording that is really in the message, and code (not the model) turns that wording into a date.**
+
+Honest caveat: these 23 cases were also used to find those bugs, so they are a development set, not an independent test. The number that matters is the one from `meow eval export` on your own messages, which never leave your machine.
 
 ## Configuration
 
@@ -100,7 +123,7 @@ Defaults live in [`src/meow/defaults.toml`](src/meow/defaults.toml): the weekly 
 ## Development
 
 ```bash
-uv run pytest                   # ~210 tests, under two seconds
+uv run pytest                   # ~230 tests, about two seconds
 uv run ruff check && uv run ruff format --check
 uv run mypy                     # strict
 MEOW_HOME=.meow-dev MEOW_API_TOKEN=dev-token uv run meow serve   # throwaway dev data
@@ -116,6 +139,7 @@ Code layout (`src/meow`):
 | `services/` | Use cases: tasks, proposals, autonomy, capture, planning, accounts, sync, briefings, background worker, audit |
 | `integrations/google/` | OAuth + Keychain tokens, thin API adapters, pure normalizers, sync |
 | `llm/` | Ollama client and the evidence-checked extractor (+ prompt) |
+| `evals/` | Extraction benchmark: scorer, seed cases, export from your decisions |
 | `api/` | FastAPI app, auth, JSON routes, server-rendered pages |
 | `notify.py` | macOS notifications (text passed as arguments, never as script) |
 | `cli.py`, `doctor.py` | The `meow` command |
@@ -124,7 +148,7 @@ The earlier prototype lives in the git history of `main` (its cat widget and App
 
 ## Roadmap
 
-1. **Deadline Guardian**: Google sync, the Meow focus calendar and briefings are done. Remaining: an extraction eval set built from your own approvals and rejections, to pick the model by measurement.
+1. **Deadline Guardian**: done. Google sync, the Meow focus calendar, briefings, and a measured extractor. Next: re-run the eval on your real messages after a few weeks of use.
 2. **Developer co-pilot**: stale-repo detection from the GitHub API, `meow explain` for failed shell commands, commit-message suggestions (never auto-push).
 3. **Presence**: the desktop cat as a client of this API; wake word, then VAD, then local speech-to-text; macOS Focus through Shortcuts.
 4. **Chat with tools** over your tasks and plan, every tool tagged L1/L2/L3.

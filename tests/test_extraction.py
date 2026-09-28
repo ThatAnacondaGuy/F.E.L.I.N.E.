@@ -70,11 +70,33 @@ def test_unknown_course_is_cleared_not_trusted(profile: Profile) -> None:
     assert "unknown course 'CS999'" in cand.notes
 
 
-def test_deadline_before_the_message_is_ignored(profile: Profile) -> None:
-    _, report = run(profile, extracted(due="2025-01-01T10:00", due_phrase=None))
+def test_deadline_the_text_does_not_state_is_removed(profile: Profile) -> None:
+    # qwen3 once gave a resume request the send time as its "deadline".
+    _, report = run(profile, extracted(due="2026-09-28T12:00", due_phrase=None))
     (cand,) = report.candidates  # type: ignore[attr-defined]
     assert cand.draft.due_at is None
-    assert cand.confidence == 0.45
+    assert "removed a deadline the text doesn't state" in cand.notes
+
+
+def test_asks_whose_deadline_had_already_passed_are_dropped(profile: Profile) -> None:
+    body = "The deadline for the IPR assignment was last Friday; late work is not accepted."
+    llm = FakeLLM(
+        {
+            "tasks": [
+                extracted(
+                    title="Submit IPR assignment",
+                    evidence=body,
+                    due_phrase="last Friday",
+                    due="2026-09-25T23:59",
+                )
+            ]
+        }
+    )
+    report = Extractor(llm, profile).extract(SourceText(body=body, occurred_at=NOW), NOW)
+    assert report.candidates == []
+    assert report.dropped == [
+        ("Submit IPR assignment", "its deadline had already passed when the message was sent")
+    ]
 
 
 def test_unreadable_deadline_lowers_confidence(profile: Profile) -> None:
@@ -108,11 +130,11 @@ def test_phrase_without_a_time_keeps_the_models_time(profile: Profile) -> None:
     assert cand.draft.due_at == ist(2026, 10, 2, 9, 15)
 
 
-def test_phrase_not_in_the_source_is_ignored(profile: Profile) -> None:
-    _, report = run(profile, extracted(due_phrase="by next Tuesday"))
+def test_phrase_not_in_the_source_removes_the_deadline(profile: Profile) -> None:
+    # qwen3 copied "by this Friday, 5 PM" from the prompt's example into an email without one.
+    _, report = run(profile, extracted(due_phrase="by this Friday, 5 PM"))
     (cand,) = report.candidates  # type: ignore[attr-defined]
-    assert cand.draft.due_at == ist(2026, 10, 2, 23, 59)  # the model's date stands
-    assert cand.notes == ()
+    assert cand.draft.due_at is None
 
 
 def test_coursework_career_value_comes_from_your_settings(profile: Profile) -> None:
@@ -233,3 +255,43 @@ def test_client_sends_think_only_when_configured() -> None:
         "m", "s", "u", {}
     )
     assert "think" not in sent[0] and sent[1]["think"] is False
+
+
+def test_task_wording_offered_as_a_deadline_is_not_a_deadline(profile: Profile) -> None:
+    body = "Also, form groups of 3 for the mini project."
+    llm = FakeLLM(
+        {
+            "tasks": [
+                extracted(
+                    evidence=body,
+                    due_phrase="form groups of 3 for the mini project",
+                    due="2026-09-28T23:59",
+                    course_code=None,
+                )
+            ]
+        }
+    )
+    (cand,) = (
+        Extractor(llm, profile).extract(SourceText(body=body, occurred_at=NOW), NOW).candidates
+    )
+    assert cand.draft.due_at is None
+
+
+def test_unparseable_but_real_time_wording_keeps_the_models_date(profile: Profile) -> None:
+    body = "bhai kal tak CC ka assignment 2 submit karna hai, sir ne bola 5 baje tak"
+    llm = FakeLLM(
+        {
+            "tasks": [
+                extracted(
+                    evidence=body,
+                    due_phrase="kal tak ... 5 baje tak",
+                    due="2026-09-29T17:00",
+                    course_code="PEC321BCOM",
+                )
+            ]
+        }
+    )
+    (cand,) = (
+        Extractor(llm, profile).extract(SourceText(body=body, occurred_at=NOW), NOW).candidates
+    )
+    assert cand.draft.due_at == ist(2026, 9, 29, 17, 0)
